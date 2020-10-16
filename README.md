@@ -27,6 +27,12 @@ npm install -g typescript
 ./src/bin_node/tezos-sandboxed-node.sh 1 --connections 1 --cors-header='content-type' --cors-origin='*'
 ```
 
+persisting data with DATA_DIR
+
+```
+DATA_DIR='/tmp/tz-data' ./src/bin_node/tezos-sandboxed-node.sh 1 --connections 1 --cors-header='content-type' --cors-origin='*'
+```
+
 # Smart contract management
 
 ## By command line (tezos-client)

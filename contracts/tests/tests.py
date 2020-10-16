@@ -7,6 +7,8 @@ from pytezos.operation.result import OperationResult
 from pytezos.rpc.errors import RpcError
 from pytezos.operation import fees
 
+from decimal import Decimal
+
 admin = "tz1ibMpWS6n6MJn73nQHtK5f4ogyYC1z9T9z"
 alice = "tz1L738ifd66ah69PrmKAZzckvvHnbcSeqjf"
 bob = "tz1LFuHW4Z9zsCwg1cgGTKU12WZAs27ZD14v"
@@ -110,7 +112,7 @@ class landContractTest(TestCase):
 
     def test_remove_operator(self):
         result = self.nftContract.update_operators(
-            [{"remove_operator": {"owner": alice, "operator": bob, "token_id": 1}}]
+            [{"remove_operator": {"owner": alice, "operator": frank, "token_id": 1}}]
             ).result(
             storage={"market": {"fundsByOwner": {},
                                 "buyers": {},
@@ -118,8 +120,8 @@ class landContractTest(TestCase):
                                 "admin": "tz1ibMpWS6n6MJn73nQHtK5f4ogyYC1z9T9z",
                                 "height": 10, "width": 10,
                                 "to_sell": {1: 100}},
-                     "ledger": {1: alice},
-                     "operators": {(alice, bob, 1): None},
+                     "ledger": {1: alice, 2: pascal},
+                     "operators": {(alice, bob, 1): None, (pascal, bob, 2): None},
                      "metadata": {"token_defs": [{"from_": 1, "to_": 100}],
                                   "last_used_id": 1,
                                   "metadata": {(1, 100): {"token_id": 1,
@@ -132,12 +134,12 @@ class landContractTest(TestCase):
                      },
             source=alice
         )
-        # print(self.nftContract)
+        #print(self.nftContract)
         #         print(result)
         #         print(result.parameters)
         #         print(result.storage)
         #         print(result.big_map_diff)
-        #         print (result.big_map_diff['operators'])
+        #           print (result.big_map_diff['operators'])
         #         print (len(result.big_map_diff['operators'].keys()))
         self.assertEqual(0, len(result.operations))
         self.assertEqual(0, len(result.big_map_diff['operators'].keys()))
@@ -265,6 +267,35 @@ class landContractTest(TestCase):
                 source=frank
             )
 
+
+
+    def test_sell_owneroperator(self):
+        result = self.nftContract.sellLand({"id": 1, "price": 300}).result(
+            storage={"market": {"fundsByOwner": {},
+                                "buyers": {},
+                                "lands": {},
+                                "admin": "tz1ibMpWS6n6MJn73nQHtK5f4ogyYC1z9T9z",
+                                "height": 10, "width": 10,
+                                "to_sell": {}},
+                        "ledger": {1: alice},
+                        "operators": {(alice, bob, 1): None},
+                        "metadata": {"token_defs": [{"from_": 1, "to_": 100}],
+                                    "last_used_id": 1,
+                                    "metadata": {(1, 100): {"token_id": 1,
+                                                            "symbol": "TLD",
+                                                            "name": "TezosLand",
+                                                            "decimals": 0,
+                                                            "extras": {}
+                                                            }
+                                                }}
+                        },
+            source=alice
+        )
+        self.assertEqual({1: Decimal(0.0003).quantize(Decimal("0.0003"))}, result.big_map_diff["market/to_sell"])
+
+
+
+# .with_amount(Decimal(0.0001))
 
 if __name__ == '__main__':
     main()
