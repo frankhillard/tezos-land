@@ -150,15 +150,21 @@ type cancelbuyer_param = {
 }
 
 let buy(p, s : buy_param * nft_token_storage) : (operation  list) * nft_token_storage =
+    let landOwner : address = match Big_map.find_opt p.id s.ledger with
+    | None -> (failwith("This land has no owner"): address)
+    | Some owner -> if (Tezos.sender = owner) then
+    (failwith("The buyer is already the owner of this land"): address)
+    else
+    owner
+    in
     let priceLand : price = match Big_map.find_opt p.id s.market.to_sell with
-    | None -> (failwith("Land is not on sale"): price)
+    | None -> (failwith("This land is not on sale"): price)
     | Some pl -> pl
     in
     let existingBuyer : unit = match Big_map.find_opt p.id s.market.buyers with
     | None -> unit
-    | Some pl -> failwith("this land has already a buyer")
+    | Some pl -> failwith("This land has already a buyer")
     in
-    // verify amount is equal land price in tz
     if not (priceLand = Tezos.amount) then
        (failwith("The amount sent is not equal to the price of the land") : (operation  list) * nft_token_storage)
     else
@@ -166,13 +172,9 @@ let buy(p, s : buy_param * nft_token_storage) : (operation  list) * nft_token_st
       | None -> Big_map.add Tezos.sender Tezos.amount s.market.fundsByOwner
       | Some v -> Big_map.update Tezos.sender (Some(v + Tezos.amount)) s.market.fundsByOwner
       in 
-      //let new_to_sell = Map.remove p.id s.market.to_sell in
       let new_buyers : (token_id, address) big_map = match Big_map.find_opt p.id s.market.buyers with
       | None -> Big_map.add p.id Tezos.sender s.market.buyers
-      | Some add -> if add = Tezos.sender then 
-        (failwith("You are the buyer , wait for validation") : (token_id, address) big_map)
-      else 
-        (failwith("already have a buyer, sorry too late") : (token_id, address) big_map)
+      | Some add -> (failwith("This land has already a buyer") : (token_id, address) big_map)
       in
       ([] : operation list), { s with market={ s.market with fundsByOwner=new_fundsByOwner; buyers=new_buyers } }
 
@@ -180,50 +182,45 @@ let buy(p, s : buy_param * nft_token_storage) : (operation  list) * nft_token_st
 // mark the land as "to_sell" and add an operator for this token
 let sell (p, s : sell_param * nft_token_storage) : (operation  list) * nft_token_storage =
   if not is_owner(p.id, Tezos.sender, s.ledger)
-    then (failwith("only owner can sell land") : (operation  list) * nft_token_storage)
+    then (failwith("Only the owner can sell its land") : (operation  list) * nft_token_storage)
     else
-        // add admin as operator for this token
-        //let new_operators = exec_update_operator([Add_operator_p({owner=Tezos.sender; operator=s.market.admin; token_id=p.id})], Tezos.sender, s.operators) in 
-        // add contract as operator for this token
-        //let new_operators = exec_update_operator([Add_operator_p({owner=Tezos.sender; operator=Tezos.self_address; token_id=p.id})], Tezos.sender, s.operators) in 
         let new_to_sell = Map.add p.id p.price s.market.to_sell in
         ([] : operation list), { s with market = { s.market with to_sell = new_to_sell } }
 
 
 let validateDeal (p, s : validate_param * nft_token_storage) : (operation  list) * nft_token_storage =
-    let buyer : address = match Big_map.find_opt p.id s.market.buyers with
-    | None -> (failwith("no buyers") : address)
-    | Some b -> b
-    in
-    // let pognon : tez = match Big_map.find_opt buyer s.market.fundsByOwner with
-    // | None -> (failwith("no funds !! ") : tez)
-    // | Some v -> v
-    // in 
-    let priceLand : price = match Big_map.find_opt p.id s.market.to_sell with
-    | None -> (failwith("Land is not on sale"): price)
-    | Some pl -> pl
-    in
-    let new_fundsByOwner : (address, tez) big_map = match Big_map.find_opt buyer s.market.fundsByOwner with
-    | None -> (failwith("buyer has no fund") : (address, tez) big_map)
-    | Some v -> if v >= priceLand then 
-      Big_map.update buyer (Some(v - priceLand)) s.market.fundsByOwner
+    if not is_owner(p.id, Tezos.sender, s.ledger)
+        then (failwith("The deal can only be validated by the owner") : (operation  list) * nft_token_storage)
     else
-      (failwith("buyer has not enough funds") : (address, tez) big_map)
-    in 
-    let new_buyers : (token_id, address) big_map = match Big_map.find_opt p.id s.market.buyers with
-    | Some add -> Big_map.remove p.id s.market.buyers
-    | None -> (failwith("You are the buyer , wait for validation") : (token_id, address) big_map)
-    in
-    let receiver : unit contract = match (Tezos.get_contract_opt Tezos.sender: unit contract option) with
-    | Some (contract) -> contract
-    | None -> (failwith ("Not a contract") : unit contract)
-    in
-    let withdrawTransaction : operation = Tezos.transaction unit priceLand receiver in
-    let new_to_sell = Map.remove p.id s.market.to_sell in
-    let txs = [{from_=Tezos.sender; txs=[{to_=buyer; token_id=p.id; amount=1n}]}] in
-    let validator = default_operator_validator in
-    let new_ledger = transfer (txs, validator, s.operators, s.ledger) in
-    [ withdrawTransaction ], { s with ledger = new_ledger; market={ s.market with fundsByOwner=new_fundsByOwner; buyers=new_buyers; to_sell=new_to_sell } }
+        let buyer : address = match Big_map.find_opt p.id s.market.buyers with
+        | None -> (failwith("The purchase of this land cannot be validated because there is not any buyer") : address)
+        | Some b -> b
+        in
+        let priceLand : price = match Big_map.find_opt p.id s.market.to_sell with
+        | None -> (failwith("This land is not on sale"): price)
+        | Some pl -> pl
+        in
+        let new_fundsByOwner : (address, tez) big_map = match Big_map.find_opt buyer s.market.fundsByOwner with
+        | None -> (failwith("The buyer did not commit any fund") : (address, tez) big_map)
+        | Some v -> if v >= priceLand then
+          Big_map.update buyer (Some(v - priceLand)) s.market.fundsByOwner
+        else
+          (failwith("The funds committed by the buyer are not enough") : (address, tez) big_map)
+        in
+        let new_buyers : (token_id, address) big_map = match Big_map.find_opt p.id s.market.buyers with
+        | Some add -> Big_map.remove p.id s.market.buyers
+        | None -> (failwith("You are the buyer , wait for validation") : (token_id, address) big_map)
+        in
+        let receiver : unit contract = match (Tezos.get_contract_opt Tezos.sender: unit contract option) with
+        | Some (contract) -> contract
+        | None -> (failwith ("Not a contract") : unit contract)
+        in
+        let withdrawTransaction : operation = Tezos.transaction unit priceLand receiver in
+        let new_to_sell = Map.remove p.id s.market.to_sell in
+        let txs = [{from_=Tezos.sender; txs=[{to_=buyer; token_id=p.id; amount=1n}]}] in
+        let validator = default_operator_validator in
+        let new_ledger = transfer (txs, validator, s.operators, s.ledger) in
+        [ withdrawTransaction ], { s with ledger = new_ledger; market={ s.market with fundsByOwner=new_fundsByOwner; buyers=new_buyers; to_sell=new_to_sell } }
 
 
 let cancelBuyer (p, s : cancelbuyer_param * nft_token_storage) : (operation  list) * nft_token_storage =
